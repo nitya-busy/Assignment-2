@@ -27,7 +27,6 @@ type InterestResponse struct {
 	CalculatedAt        time.Time `json:"calculated_at"`
 }
 
-// TakeLoan creates a new loan for a customer
 func TakeLoan(c *gin.Context) {
 	var req TakeLoanRequest
 
@@ -35,15 +34,11 @@ func TakeLoan(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Verify customer exists
 	var customer models.Customer
 	if result := config.GetDB().First(&customer, req.CustomerID); result.Error != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
 		return
 	}
-
-	// Calculate total payable amount with 12% interest
 	interestRate := 12.0
 	totalPayableAmount := req.PrincipalAmount + (req.PrincipalAmount * interestRate / 100.0)
 
@@ -66,8 +61,6 @@ func TakeLoan(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, loan)
 }
-
-// GetLoan retrieves loan details
 func GetLoan(c *gin.Context) {
 	id := c.Param("id")
 	var loan models.Loan
@@ -84,8 +77,6 @@ func GetLoan(c *gin.Context) {
 
 	c.JSON(http.StatusOK, loan)
 }
-
-// GetCustomerLoans retrieves all loans for a customer
 func GetCustomerLoans(c *gin.Context) {
 	customerID := c.Param("customer_id")
 	var loans []models.Loan
@@ -102,8 +93,6 @@ func GetCustomerLoans(c *gin.Context) {
 
 	c.JSON(http.StatusOK, loans)
 }
-
-// RepayLoan makes a payment towards a loan
 func RepayLoan(c *gin.Context) {
 	loanID := c.Param("id")
 	var req RepayLoanRequest
@@ -114,64 +103,48 @@ func RepayLoan(c *gin.Context) {
 	}
 
 	tx := config.GetDB().Begin()
-
-	// Get loan
 	var loan models.Loan
 	if result := tx.First(&loan, loanID); result.Error != nil {
 		tx.Rollback()
 		c.JSON(http.StatusNotFound, gin.H{"error": "Loan not found"})
 		return
 	}
-
-	// Check loan status
 	if loan.Status == "CLOSED" {
 		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Loan is already closed"})
 		return
 	}
-
-	// Check repayment amount
 	if req.Amount > loan.PendingAmount {
 		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Repayment amount exceeds pending amount"})
 		return
 	}
-
-	// Update pending amount
 	loan.PendingAmount -= req.Amount
 	if loan.PendingAmount == 0 {
 		loan.Status = "CLOSED"
 	}
-
 	if result := tx.Save(&loan); result.Error != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
-
-	// Record payment
 	payment := models.LoanPayment{
 		LoanID:      loan.ID,
 		Amount:      req.Amount,
 		PaymentDate: time.Now(),
 	}
-
 	if result := tx.Create(&payment); result.Error != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
-
 	tx.Commit()
-
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Loan repayment successful",
 		"loan":    loan,
 		"payment": payment,
 	})
 }
-
-// GetLoanInterest calculates and returns interest for a loan
 func GetLoanInterest(c *gin.Context) {
 	loanID := c.Param("id")
 	var loan models.Loan
@@ -180,8 +153,6 @@ func GetLoanInterest(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Loan not found"})
 		return
 	}
-
-	// Calculate yearly interest: Pending Amount × 12 / 100
 	interestForThisYear := (loan.PendingAmount * loan.InterestRate) / 100.0
 
 	response := InterestResponse{
@@ -194,8 +165,6 @@ func GetLoanInterest(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
-
-// GetLoanPayments retrieves all payments for a loan
 func GetLoanPayments(c *gin.Context) {
 	loanID := c.Param("id")
 	var payments []models.LoanPayment

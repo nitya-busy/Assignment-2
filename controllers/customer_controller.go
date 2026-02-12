@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CreateCustomer creates a new customer
 func CreateCustomer(c *gin.Context) {
 	var customer models.Customer
 
@@ -16,8 +15,6 @@ func CreateCustomer(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Verify branch exists
 	var branch models.Branch
 	if result := config.GetDB().First(&branch, customer.BranchID); result.Error != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Branch not found"})
@@ -32,8 +29,6 @@ func CreateCustomer(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, customer)
 }
-
-// GetCustomer retrieves a customer by ID
 func GetCustomer(c *gin.Context) {
 	id := c.Param("customer_id")
 	var customer models.Customer
@@ -51,8 +46,6 @@ func GetCustomer(c *gin.Context) {
 
 	c.JSON(http.StatusOK, customer)
 }
-
-// GetCustomersByBranch retrieves all customers in a branch
 func GetCustomersByBranch(c *gin.Context) {
 	branchID := c.Param("branch_id")
 	var customers []models.Customer

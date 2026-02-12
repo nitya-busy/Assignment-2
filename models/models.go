@@ -45,7 +45,7 @@ type CustomerAccount struct {
 	Customer   Customer       `gorm:"foreignKey:CustomerID;constraint:OnDelete:CASCADE" json:"customer,omitempty"`
 	AccountID  uint           `gorm:"not null;index" json:"account_id"`
 	Account    SavingsAccount `gorm:"foreignKey:AccountID;constraint:OnDelete:CASCADE" json:"account,omitempty"`
-	HolderRole string         `gorm:"not null;default:'primary_holder'" json:"holder_role"` // primary_holder or joint_holder
+	HolderRole string         `gorm:"not null;default:'primary_holder'" json:"holder_role"`
 	CreatedAt  time.Time      `json:"created_at"`
 }
 
@@ -53,7 +53,7 @@ type Transaction struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	AccountID uint           `gorm:"not null;index" json:"account_id"`
 	Account   SavingsAccount `gorm:"foreignKey:AccountID;constraint:OnDelete:CASCADE" json:"account,omitempty"`
-	Type      string         `gorm:"not null" json:"type"` // DEPOSIT or WITHDRAW
+	Type      string         `gorm:"not null" json:"type"`
 	Amount    float64        `gorm:"not null" json:"amount"`
 	CreatedAt time.Time      `json:"created_at"`
 }
@@ -64,12 +64,12 @@ type Loan struct {
 	Customer           Customer      `gorm:"foreignKey:CustomerID;constraint:OnDelete:CASCADE" json:"customer,omitempty"`
 	LoanType           string        `gorm:"not null" json:"loan_type"`
 	PrincipalAmount    float64       `gorm:"not null" json:"principal_amount"`
-	InterestRate       float64       `gorm:"not null;default:12" json:"interest_rate"` // 12% fixed
+	InterestRate       float64       `gorm:"not null;default:12" json:"interest_rate"`
 	TotalPayableAmount float64       `gorm:"not null" json:"total_payable_amount"`
 	PendingAmount      float64       `gorm:"not null" json:"pending_amount"`
 	StartDate          time.Time     `gorm:"not null" json:"start_date"`
 	EndDate            *time.Time    `json:"end_date,omitempty"`
-	Status             string        `gorm:"not null;default:'ACTIVE'" json:"status"` // ACTIVE or CLOSED
+	Status             string        `gorm:"not null;default:'ACTIVE'" json:"status"`
 	LoanPayments       []LoanPayment `gorm:"foreignKey:LoanID;constraint:OnDelete:CASCADE" json:"loan_payments,omitempty"`
 	CreatedAt          time.Time     `json:"created_at"`
 }

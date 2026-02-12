@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CreateBank creates a new bank
 func CreateBank(c *gin.Context) {
 	var bank models.Bank
 
@@ -25,8 +24,6 @@ func CreateBank(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, bank)
 }
-
-// GetBank retrieves a bank by ID
 func GetBank(c *gin.Context) {
 	id := c.Param("bank_id")
 	var bank models.Bank
@@ -39,8 +36,6 @@ func GetBank(c *gin.Context) {
 
 	c.JSON(http.StatusOK, bank)
 }
-
-// GetAllBanks retrieves all banks
 func GetAllBanks(c *gin.Context) {
 	var banks []models.Bank
 

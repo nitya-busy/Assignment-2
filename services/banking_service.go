@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-// BankService handles bank-related operations
 type BankService struct{}
 
 func NewBankService() *BankService {
@@ -35,7 +34,6 @@ func (bs *BankService) GetBankByID(id uint) (*models.Bank, error) {
 	return &bank, nil
 }
 
-// BranchService handles branch-related operations
 type BranchService struct{}
 
 func NewBranchService() *BranchService {
@@ -43,7 +41,6 @@ func NewBranchService() *BranchService {
 }
 
 func (bs *BranchService) CreateBranch(bankID uint, name, address string) (*models.Branch, error) {
-	// Verify bank exists
 	var bank models.Bank
 	if result := config.GetDB().First(&bank, bankID); result.Error != nil {
 		return nil, errors.New("bank not found")
@@ -62,7 +59,6 @@ func (bs *BranchService) CreateBranch(bankID uint, name, address string) (*model
 	return &branch, nil
 }
 
-// CustomerService handles customer-related operations
 type CustomerService struct{}
 
 func NewCustomerService() *CustomerService {
@@ -70,7 +66,6 @@ func NewCustomerService() *CustomerService {
 }
 
 func (cs *CustomerService) RegisterCustomer(branchID uint, name, email, phone string) (*models.Customer, error) {
-	// Verify branch exists
 	var branch models.Branch
 	if result := config.GetDB().First(&branch, branchID); result.Error != nil {
 		return nil, errors.New("branch not found")
@@ -90,7 +85,6 @@ func (cs *CustomerService) RegisterCustomer(branchID uint, name, email, phone st
 	return &customer, nil
 }
 
-// AccountService handles account-related operations
 type AccountService struct{}
 
 func NewAccountService() *AccountService {
@@ -98,77 +92,57 @@ func NewAccountService() *AccountService {
 }
 
 func (as *AccountService) OpenSavingsAccount(customerID uint, holderRole string) (*models.SavingsAccount, error) {
-	// Verify customer exists
 	var customer models.Customer
 	if result := config.GetDB().First(&customer, customerID); result.Error != nil {
 		return nil, errors.New("customer not found")
 	}
-
-	// Set default holder role
 	if holderRole == "" {
 		holderRole = "primary_holder"
 	}
-
 	tx := config.GetDB().Begin()
-
-	// Create new savings account
 	account := models.SavingsAccount{
 		Balance: 0,
 	}
-
 	if result := tx.Create(&account); result.Error != nil {
 		tx.Rollback()
 		return nil, result.Error
 	}
-
-	// Link customer to account via CustomerAccount
 	customerAccount := models.CustomerAccount{
 		CustomerID: customerID,
 		AccountID:  account.ID,
 		HolderRole: holderRole,
 	}
-
 	if result := tx.Create(&customerAccount); result.Error != nil {
 		tx.Rollback()
 		return nil, result.Error
 	}
-
 	tx.Commit()
 	return &account, nil
 }
-
 func (as *AccountService) AddAccountHolder(accountID, customerID uint, holderRole string) (*models.CustomerAccount, error) {
-	// Verify account exists
+
 	var account models.SavingsAccount
 	if result := config.GetDB().First(&account, accountID); result.Error != nil {
 		return nil, errors.New("account not found")
 	}
-
-	// Verify customer exists
 	var customer models.Customer
 	if result := config.GetDB().First(&customer, customerID); result.Error != nil {
 		return nil, errors.New("customer not found")
 	}
-
-	// Check if customer is already linked to this account
 	var existingLink models.CustomerAccount
 	if result := config.GetDB().Where("customer_id = ? AND account_id = ?", customerID, accountID).First(&existingLink); result.RowsAffected > 0 {
 		return nil, errors.New("customer is already linked to this account")
 	}
-
 	customerAccount := models.CustomerAccount{
 		CustomerID: customerID,
 		AccountID:  accountID,
 		HolderRole: holderRole,
 	}
-
 	if result := config.GetDB().Create(&customerAccount); result.Error != nil {
 		return nil, result.Error
 	}
-
 	return &customerAccount, nil
 }
-
 func (as *AccountService) GetAccountBalance(accountID uint) (float64, error) {
 	var account models.SavingsAccount
 	if result := config.GetDB().First(&account, accountID); result.Error != nil {
@@ -195,7 +169,6 @@ func (as *AccountService) GetAccountHolders(accountID uint) ([]models.CustomerAc
 	return holders, nil
 }
 
-// LoanService handles loan-related operations
 type LoanService struct{}
 
 func NewLoanService() *LoanService {
@@ -203,13 +176,11 @@ func NewLoanService() *LoanService {
 }
 
 func (ls *LoanService) CreateLoan(customerID uint, loanType string, principalAmount float64) (*models.Loan, error) {
-	// Verify customer exists
+
 	var customer models.Customer
 	if result := config.GetDB().First(&customer, customerID); result.Error != nil {
 		return nil, errors.New("customer not found")
 	}
-
-	// Calculate total payable amount with 12% interest
 	interestRate := 12.0
 	totalPayableAmount := principalAmount + (principalAmount * interestRate / 100.0)
 
@@ -298,8 +269,6 @@ func (ls *LoanService) CalculateYearlyInterest(loanID uint) (float64, error) {
 	if result := config.GetDB().First(&loan, loanID); result.Error != nil {
 		return 0, result.Error
 	}
-
-	// Yearly Interest = Pending Amount × Interest Rate / 100
 	interest := (loan.PendingAmount * loan.InterestRate) / 100.0
 	return interest, nil
 }
