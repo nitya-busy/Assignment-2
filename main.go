@@ -11,7 +11,6 @@ import (
 )
 
 func main() {
-	// Database configuration
 	dbConfig := config.Config{
 		Host:     os.Getenv("DB_HOST"),
 		Port:     os.Getenv("DB_PORT"),
@@ -20,8 +19,6 @@ func main() {
 		DBName:   os.Getenv("DB_NAME"),
 		SSLMode:  os.Getenv("DB_SSLMODE"),
 	}
-
-	// Set default values if env variables are not set
 	if dbConfig.Host == "" {
 		dbConfig.Host = "localhost"
 	}
@@ -40,16 +37,10 @@ func main() {
 	if dbConfig.SSLMode == "" {
 		dbConfig.SSLMode = "disable"
 	}
-
-	// Initialize database
 	if err := config.InitDB(dbConfig); err != nil {
 		log.Fatal("Failed to initialize database: ", err)
 	}
-
-	// Run migrations
 	db := config.GetDB()
-	
-	// Drop all tables to ensure clean migration (for development)
 	db.Migrator().DropTable(
 		&models.LoanPayment{},
 		&models.Loan{},
@@ -60,7 +51,7 @@ func main() {
 		&models.Branch{},
 		&models.Bank{},
 	)
-	
+
 	if err := db.AutoMigrate(
 		&models.Bank{},
 		&models.Branch{},
@@ -75,22 +66,14 @@ func main() {
 	}
 
 	log.Println("Database migrations completed successfully")
-
-	// Initialize Gin router
 	router := gin.Default()
-
-	// Setup routes
 	routes.SetupRoutes(router)
-
-	// Add a health check endpoint
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "OK",
 			"message": "Banking System API is running",
 		})
 	})
-
-	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

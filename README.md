@@ -1,38 +1,62 @@
-Banking System – API List
+#  Banking System Backend
 
-- Health
-GET /health – Check API status
+A scalable banking system backend built using **Go**, **Gin**, **GORM**, and **PostgreSQL**.
 
-- Banks
-POST /banks – Create bank
-GET /banks – Get all banks
-GET /banks/:id – Get bank by ID
+This project simulates real-world banking operations including account management, transactions, and loan processing with guaranteed data consistency using database transactions.
 
-- Branches
-POST /branches – Create branch
-GET /branches/:id – Get branch by ID
-GET /banks/:bank_id/branches – Get branches of a bank
+---
 
-- Customers
-POST /customers – Register customer
-GET /customers/:id – Get customer details
-GET /branches/:branch_id/customers – Get customers by branch
-GET /customers/:customer_id/loans – Get customer loans
+##  Key Features
 
-- Savings Accounts
-POST /accounts/savings – Open savings account
-POST /accounts/:account_id/holders – Add joint holder
-GET /accounts/:id – Get account details
-POST /accounts/:id/deposit – Deposit money
-POST /accounts/:id/withdraw – Withdraw money
-GET /accounts/:id/transactions – Get transaction history
+- Multi-bank & multi-branch architecture
+- Customer onboarding & profile management
+- Savings accounts (deposit & withdrawal)
+- Immutable transaction history
+- Loan system with fixed **12% annual interest**
+- Total payable amount calculated at loan creation
+- Automatic loan closure after full repayment
+- RESTful API design with proper HTTP status codes
+- Atomic operations using database transactions
 
-- Loans
-POST /loans – Take loan
-GET /loans/:id – Get loan details
-POST /loans/:id/repay – Repay loan
-GET /loans/:id/interest – Calculate loan interest
-GET /loans/:id/payments – Get loan payment history
+---
 
+## 🛠 Tech Stack
 
+- **Go (Golang)**
+- **Gin** – HTTP Web Framework
+- **GORM** – ORM Library
+- **PostgreSQL** – Relational Database
 
+---
+
+## 📂 Project Structure
+
+banking-system/
+├── cmd/main.go
+├── config/
+├── controllers/
+├── models/
+├── routes/
+├── services/
+└── schema.sql
+
+---
+
+## ⚡ Getting Started
+
+### Install Dependencies
+```bash
+go mod download
+Run the Application
+go run cmd/main.go
+Server runs at:
+http://localhost:8080
+🔌 API Overview
+Method	Endpoint	Description
+POST	/banks	Create bank
+POST	/customers	Register customer
+POST	/accounts/savings	Open savings account
+POST	/accounts/{id}/deposit	Deposit money
+POST	/accounts/{id}/withdraw	Withdraw money
+POST	/loans	Create loan
+POST	/loans/{id}/repay	Repay loan
