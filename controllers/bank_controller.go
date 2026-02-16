@@ -16,20 +16,22 @@ func CreateBank(c *gin.Context) {
 		return
 	}
 
-	result := config.GetDB().Create(&bank)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+	if err := config.GetDB().Create(&bank).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, bank)
 }
 func GetBank(c *gin.Context) {
-	id := c.Param("bank_id")
+	id := c.Param("id")
+
 	var bank models.Bank
 
-	result := config.GetDB().Preload("Branches").First(&bank, id)
-	if result.Error != nil {
+	if err := config.GetDB().
+		Preload("Branches").
+		First(&bank, id).Error; err != nil {
+
 		c.JSON(http.StatusNotFound, gin.H{"error": "Bank not found"})
 		return
 	}
@@ -39,11 +41,35 @@ func GetBank(c *gin.Context) {
 func GetAllBanks(c *gin.Context) {
 	var banks []models.Bank
 
-	result := config.GetDB().Preload("Branches").Find(&banks)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+	if err := config.GetDB().
+		Preload("Branches").
+		Find(&banks).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, banks)
+}
+func UpdateBank(c *gin.Context) {
+	id := c.Param("id")
+
+	db := config.GetDB()
+	var bank models.Bank
+	if err := db.First(&bank, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Bank not found"})
+		return
+	}
+
+	var updatedData models.Bank
+	if err := c.ShouldBindJSON(&updatedData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := db.Model(&bank).Updates(updatedData).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, bank)
 }

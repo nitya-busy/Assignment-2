@@ -16,50 +16,62 @@ func CreateCustomer(c *gin.Context) {
 		return
 	}
 	var branch models.Branch
-	if result := config.GetDB().First(&branch, customer.BranchID); result.Error != nil {
+	if err := config.GetDB().First(&branch, customer.BranchID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Branch not found"})
 		return
 	}
 
-	result := config.GetDB().Create(&customer)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+	if err := config.GetDB().Create(&customer).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, customer)
 }
 func GetCustomer(c *gin.Context) {
-	id := c.Param("customer_id")
+	id := c.Param("id")
+
 	var customer models.Customer
 
-	result := config.GetDB().
+	if err := config.GetDB().
 		Preload("Branch").
 		Preload("CustomerAccounts.Account").
 		Preload("Loans").
-		First(&customer, id)
+		First(&customer, id).Error; err != nil {
 
-	if result.Error != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
 		return
 	}
 
 	c.JSON(http.StatusOK, customer)
 }
-func GetCustomersByBranch(c *gin.Context) {
-	branchID := c.Param("branch_id")
-	var customers []models.Customer
+func UpdateCustomer(c *gin.Context) {
+	id := c.Param("id")
 
-	result := config.GetDB().
-		Where("branch_id = ?", branchID).
-		Preload("CustomerAccounts.Account").
-		Preload("Loans").
-		Find(&customers)
-
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+	db := config.GetDB()
+	var customer models.Customer
+	if err := db.First(&customer, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, customers)
+	var updatedData models.Customer
+	if err := c.ShouldBindJSON(&updatedData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if updatedData.BranchID != 0 {
+		var branch models.Branch
+		if err := db.First(&branch, updatedData.BranchID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Branch not found"})
+			return
+		}
+	}
+
+	if err := db.Model(&customer).Updates(updatedData).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, customer)
 }

@@ -16,40 +16,61 @@ func CreateBranch(c *gin.Context) {
 		return
 	}
 	var bank models.Bank
-	if result := config.GetDB().First(&bank, branch.BankID); result.Error != nil {
+	if err := config.GetDB().First(&bank, branch.BankID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Bank not found"})
 		return
 	}
 
-	result := config.GetDB().Create(&branch)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+	if err := config.GetDB().Create(&branch).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, branch)
 }
 func GetBranch(c *gin.Context) {
-	id := c.Param("branch_id")
+	id := c.Param("id")
+
 	var branch models.Branch
 
-	result := config.GetDB().Preload("Bank").Preload("Customers").First(&branch, id)
-	if result.Error != nil {
+	if err := config.GetDB().
+		Preload("Bank").
+		Preload("Customers").
+		First(&branch, id).Error; err != nil {
+
 		c.JSON(http.StatusNotFound, gin.H{"error": "Branch not found"})
 		return
 	}
 
 	c.JSON(http.StatusOK, branch)
 }
-func GetBranchesByBank(c *gin.Context) {
-	bankID := c.Param("bank_id")
-	var branches []models.Branch
+func UpdateBranch(c *gin.Context) {
+	id := c.Param("id")
 
-	result := config.GetDB().Where("bank_id = ?", bankID).Preload("Customers").Find(&branches)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+	db := config.GetDB()
+	var branch models.Branch
+	if err := db.First(&branch, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Branch not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, branches)
+	var updatedData models.Branch
+	if err := c.ShouldBindJSON(&updatedData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if updatedData.BankID != 0 {
+		var bank models.Bank
+		if err := db.First(&bank, updatedData.BankID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Bank not found"})
+			return
+		}
+	}
+
+	if err := db.Model(&branch).Updates(updatedData).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, branch)
 }
