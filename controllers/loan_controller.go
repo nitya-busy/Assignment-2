@@ -34,11 +34,13 @@ func TakeLoan(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
 	var customer models.Customer
-	if result := config.GetDB().First(&customer, req.CustomerID); result.Error != nil {
+	if err := config.GetDB().First(&customer, req.CustomerID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
 		return
 	}
+
 	interestRate := 12.0
 	totalPayableAmount := req.PrincipalAmount + (req.PrincipalAmount * interestRate / 100.0)
 
@@ -53,46 +55,51 @@ func TakeLoan(c *gin.Context) {
 		Status:             "ACTIVE",
 	}
 
-	result := config.GetDB().Create(&loan)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+	if err := config.GetDB().Create(&loan).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, loan)
 }
+
 func GetLoan(c *gin.Context) {
 	id := c.Param("id")
 	var loan models.Loan
 
-	result := config.GetDB().
+	if err := config.GetDB().
 		Preload("Customer").
+		Preload("Customer.Branch").
+		Preload("Customer.Branch.Bank").
 		Preload("LoanPayments").
-		First(&loan, id)
+		First(&loan, id).Error; err != nil {
 
-	if result.Error != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Loan not found"})
 		return
 	}
 
 	c.JSON(http.StatusOK, loan)
 }
+
 func GetCustomerLoans(c *gin.Context) {
 	customerID := c.Param("customer_id")
 	var loans []models.Loan
 
-	result := config.GetDB().
+	if err := config.GetDB().
 		Where("customer_id = ?", customerID).
+		Preload("Customer").
+		Preload("Customer.Branch").
+		Preload("Customer.Branch.Bank").
 		Preload("LoanPayments").
-		Find(&loans)
+		Find(&loans).Error; err != nil {
 
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, loans)
 }
+
 func RepayLoan(c *gin.Context) {
 	loanID := c.Param("id")
 	var req RepayLoanRequest
@@ -103,56 +110,75 @@ func RepayLoan(c *gin.Context) {
 	}
 
 	tx := config.GetDB().Begin()
+
 	var loan models.Loan
-	if result := tx.First(&loan, loanID); result.Error != nil {
+
+	if err := tx.
+		Preload("Customer").
+		Preload("Customer.Branch").
+		Preload("Customer.Branch.Bank").
+		Preload("LoanPayments").
+		First(&loan, loanID).Error; err != nil {
+
 		tx.Rollback()
 		c.JSON(http.StatusNotFound, gin.H{"error": "Loan not found"})
 		return
 	}
+
 	if loan.Status == "CLOSED" {
 		tx.Rollback()
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Loan is already closed"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Loan already closed"})
 		return
 	}
+
 	if req.Amount > loan.PendingAmount {
 		tx.Rollback()
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Repayment amount exceeds pending amount"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Amount exceeds pending amount"})
 		return
 	}
+
 	loan.PendingAmount -= req.Amount
+
 	if loan.PendingAmount == 0 {
 		loan.Status = "CLOSED"
 	}
-	if result := tx.Save(&loan); result.Error != nil {
+
+	if err := tx.Save(&loan).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
 	payment := models.LoanPayment{
 		LoanID:      loan.ID,
 		Amount:      req.Amount,
 		PaymentDate: time.Now(),
 	}
-	if result := tx.Create(&payment); result.Error != nil {
+
+	if err := tx.Create(&payment).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
 	tx.Commit()
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Loan repayment successful",
 		"loan":    loan,
 		"payment": payment,
 	})
 }
+
 func GetLoanInterest(c *gin.Context) {
 	loanID := c.Param("id")
 	var loan models.Loan
 
-	if result := config.GetDB().First(&loan, loanID); result.Error != nil {
+	if err := config.GetDB().First(&loan, loanID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Loan not found"})
 		return
 	}
+
 	interestForThisYear := (loan.PendingAmount * loan.InterestRate) / 100.0
 
 	response := InterestResponse{
@@ -165,17 +191,21 @@ func GetLoanInterest(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
 func GetLoanPayments(c *gin.Context) {
 	loanID := c.Param("id")
 	var payments []models.LoanPayment
 
-	result := config.GetDB().
+	if err := config.GetDB().
 		Where("loan_id = ?", loanID).
+		Preload("Loan").
+		Preload("Loan.Customer").
+		Preload("Loan.Customer.Branch").
+		Preload("Loan.Customer.Branch.Bank").
 		Order("payment_date DESC").
-		Find(&payments)
+		Find(&payments).Error; err != nil {
 
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 

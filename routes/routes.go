@@ -10,7 +10,6 @@ func SetupRoutes(router *gin.Engine) {
 	router.POST("/banks", controllers.CreateBank)
 	router.GET("/banks/:bank_id", controllers.GetBank)
 	router.GET("/banks", controllers.GetAllBanks)
-	router.GET("/customers", controllers.ListCustomersWithAccounts)
 	router.POST("/branches", controllers.CreateBranch)
 	router.GET("/branches/:branch_id", controllers.GetBranch)
 	router.GET("/banks/:bank_id/branches", controllers.GetBranchesByBank)
@@ -25,6 +24,7 @@ func SetupRoutes(router *gin.Engine) {
 	router.POST("/accounts/:account_id/deposit", controllers.Deposit)
 	router.POST("/accounts/:account_id/withdraw", controllers.Withdraw)
 	router.GET("/accounts/:account_id/transactions", controllers.GetTransactions)
+	router.GET("/customers", controllers.ListCustomersWithAccounts)
 
 	router.POST("/loans", controllers.TakeLoan)
 	router.GET("/loans/:id", controllers.GetLoan)
