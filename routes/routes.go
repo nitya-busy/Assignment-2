@@ -16,6 +16,7 @@ func SetupRoutes(router *gin.Engine) {
 	router.GET("/branches/:id", controllers.GetBranch)
 	router.PUT("/branches/:id", controllers.UpdateBranch)
 
+	router.GET("/customers", controllers.ListCustomersWithAccounts)
 	router.POST("/customers", controllers.CreateCustomer)
 	router.GET("/customers/:id", controllers.GetCustomer)
 	router.PUT("/customers/:id", controllers.UpdateCustomer)

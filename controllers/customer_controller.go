@@ -75,3 +75,85 @@ func UpdateCustomer(c *gin.Context) {
 
 	c.JSON(http.StatusOK, customer)
 }
+
+func ListCustomersWithAccounts(c *gin.Context) {
+	type CustomerAccountDetail struct {
+		AccountNo  uint    `json:"account_no"`
+		BranchName string  `json:"branch_name"`
+		BankName   string  `json:"bank_name"`
+		Balance    float64 `json:"balance"`
+	}
+
+	type CustomerWithAccountsResponse struct {
+		ID       uint                    `json:"id"`
+		Name     string                  `json:"name"`
+		Email    string                  `json:"email"`
+		Phone    string                  `json:"phone"`
+		Accounts []CustomerAccountDetail `json:"accounts"`
+	}
+
+	query := `
+		SELECT 
+			c.id as customer_id,
+			c.name as customer_name,
+			c.email as customer_email,
+			c.phone as customer_phone,
+			sa.id as account_no,
+			br.name as branch_name,
+			b.name as bank_name,
+			sa.balance as balance
+		FROM customers c
+		LEFT JOIN customer_accounts ca ON c.id = ca.customer_id
+		LEFT JOIN savings_accounts sa ON ca.account_id = sa.id
+		LEFT JOIN branches br ON c.branch_id = br.id
+		LEFT JOIN banks b ON br.bank_id = b.id
+		ORDER BY c.id, sa.id
+	`
+
+	type CustomerQueryResult struct {
+		CustomerID    uint
+		CustomerName  string
+		CustomerEmail string
+		CustomerPhone string
+		AccountNo     *uint
+		BranchName    *string
+		BankName      *string
+		Balance       *float64
+	}
+
+	var results []CustomerQueryResult
+	if err := config.GetDB().Raw(query).Scan(&results).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	customerMap := make(map[uint]*CustomerWithAccountsResponse)
+
+	for _, row := range results {
+		if _, exists := customerMap[row.CustomerID]; !exists {
+			customerMap[row.CustomerID] = &CustomerWithAccountsResponse{
+				ID:       row.CustomerID,
+				Name:     row.CustomerName,
+				Email:    row.CustomerEmail,
+				Phone:    row.CustomerPhone,
+				Accounts: []CustomerAccountDetail{},
+			}
+		}
+
+		if row.AccountNo != nil && row.BranchName != nil && row.BankName != nil {
+			customerMap[row.CustomerID].Accounts = append(customerMap[row.CustomerID].Accounts, CustomerAccountDetail{
+				AccountNo:  *row.AccountNo,
+				BranchName: *row.BranchName,
+				BankName:   *row.BankName,
+				Balance:    *row.Balance,
+			})
+		}
+	}
+
+	var response []CustomerWithAccountsResponse
+	for _, customer := range customerMap {
+		response = append(response, *customer)
+	}
+
+	c.JSON(http.StatusOK, response)
+}
