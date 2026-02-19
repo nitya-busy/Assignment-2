@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm/clause"
 )
 
 type TakeLoanRequest struct {
@@ -16,7 +17,8 @@ type TakeLoanRequest struct {
 }
 
 type RepayLoanRequest struct {
-	Amount float64 `json:"amount" binding:"required,gt=0"`
+	AccountID uint    `json:"account_id" binding:"required"`
+	Amount    float64 `json:"amount" binding:"required,gt=0"`
 }
 
 type InterestResponse struct {
@@ -42,7 +44,8 @@ func TakeLoan(c *gin.Context) {
 	}
 
 	interestRate := 12.0
-	totalPayableAmount := req.PrincipalAmount + (req.PrincipalAmount * interestRate / 100.0)
+	totalPayableAmount := req.PrincipalAmount +
+		(req.PrincipalAmount * interestRate / 100.0)
 
 	loan := models.Loan{
 		CustomerID:         req.CustomerID,
@@ -87,10 +90,8 @@ func GetCustomerLoans(c *gin.Context) {
 
 	if err := config.GetDB().
 		Where("customer_id = ?", customerID).
-		Preload("Customer").
-		Preload("Customer.Branch").
-		Preload("Customer.Branch.Bank").
 		Preload("LoanPayments").
+		Order("start_date DESC").
 		Find(&loans).Error; err != nil {
 
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -102,22 +103,22 @@ func GetCustomerLoans(c *gin.Context) {
 
 func RepayLoan(c *gin.Context) {
 	loanID := c.Param("id")
-	var req RepayLoanRequest
 
+	var req RepayLoanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	tx := config.GetDB().Begin()
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start transaction"})
+		return
+	}
 
 	var loan models.Loan
-
 	if err := tx.
-		Preload("Customer").
-		Preload("Customer.Branch").
-		Preload("Customer.Branch.Bank").
-		Preload("LoanPayments").
+		Clauses(clause.Locking{Strength: "UPDATE"}).
 		First(&loan, loanID).Error; err != nil {
 
 		tx.Rollback()
@@ -137,10 +138,44 @@ func RepayLoan(c *gin.Context) {
 		return
 	}
 
-	loan.PendingAmount -= req.Amount
+	var account models.SavingsAccount
+	if err := tx.
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(&account, req.AccountID).Error; err != nil {
 
+		tx.Rollback()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+		return
+	}
+
+	var customerAccount models.CustomerAccount
+	if err := tx.
+		Where("customer_id = ? AND account_id = ?", loan.CustomerID, account.ID).
+		First(&customerAccount).Error; err != nil {
+
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Account does not belong to loan customer"})
+		return
+	}
+
+	if account.Balance < req.Amount {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Insufficient balance"})
+		return
+	}
+
+	account.Balance -= req.Amount
+	if err := tx.Save(&account).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	loan.PendingAmount -= req.Amount
 	if loan.PendingAmount == 0 {
 		loan.Status = "CLOSED"
+		now := time.Now()
+		loan.EndDate = &now
 	}
 
 	if err := tx.Save(&loan).Error; err != nil {
@@ -161,12 +196,27 @@ func RepayLoan(c *gin.Context) {
 		return
 	}
 
-	tx.Commit()
+	transaction := models.Transaction{
+		AccountID: account.ID,
+		Type:      "WITHDRAW",
+		Amount:    req.Amount,
+		Balance:   account.Balance,
+	}
 
+	if err := tx.Create(&transaction).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to commit transaction"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Loan repayment successful",
-		"loan":    loan,
-		"payment": payment,
+		"withdraw_amount": req.Amount,
+		"updated_balance": account.Balance,
+		"transaction":     transaction,
 	})
 }
 
@@ -179,7 +229,8 @@ func GetLoanInterest(c *gin.Context) {
 		return
 	}
 
-	interestForThisYear := (loan.PendingAmount * loan.InterestRate) / 100.0
+	interestForThisYear :=
+		(loan.PendingAmount * loan.InterestRate) / 100.0
 
 	response := InterestResponse{
 		LoanID:              loan.ID,
@@ -198,10 +249,6 @@ func GetLoanPayments(c *gin.Context) {
 
 	if err := config.GetDB().
 		Where("loan_id = ?", loanID).
-		Preload("Loan").
-		Preload("Loan.Customer").
-		Preload("Loan.Customer.Branch").
-		Preload("Loan.Customer.Branch.Bank").
 		Order("payment_date DESC").
 		Find(&payments).Error; err != nil {
 

@@ -17,6 +17,7 @@ func SetupRoutes(router *gin.Engine) {
 	router.POST("/customers", controllers.CreateCustomer)
 	router.GET("/customers/:customer_id", controllers.GetCustomer)
 	router.GET("/branches/:branch_id/customers", controllers.GetCustomersByBranch)
+	router.GET("/customers/name", controllers.ListCustomerNames)
 
 	router.POST("/accounts/savings", controllers.OpenSavingsAccount)
 	router.POST("/accounts/:account_id/holders", controllers.AddAccountHolder)

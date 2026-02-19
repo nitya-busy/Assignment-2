@@ -49,6 +49,32 @@ func GetCustomer(c *gin.Context) {
 	c.JSON(http.StatusOK, customer)
 }
 
+func ListCustomerNames(c *gin.Context) {
+
+	type CustomerNameResponse struct {
+		Name string `json:"name"`
+	}
+
+	var customers []CustomerNameResponse
+	search := c.Query("search")
+
+	db := config.GetDB()
+
+	if search != "" {
+		db = db.Where("name ILIKE ?", "%"+search+"%")
+	}
+
+	err := db.Model(&models.Customer{}).
+		Select("name").Find(&customers).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, customers)
+}
+
 func GetCustomersByBranch(c *gin.Context) {
 	branchID := c.Param("branch_id")
 	var customers []models.Customer
