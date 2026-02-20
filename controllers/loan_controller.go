@@ -3,10 +3,12 @@ package controllers
 import (
 	"banking-system/config"
 	"banking-system/models"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm/clause"
 )
 
 type TakeLoanRequest struct {
@@ -15,8 +17,17 @@ type TakeLoanRequest struct {
 	PrincipalAmount float64 `json:"principal_amount" binding:"required,gt=0"`
 }
 
-type UpdateLoanRequest struct {
-	Amount float64 `json:"amount" binding:"required,gt=0"`
+type RepayLoanRequest struct {
+	AccountID uint    `json:"account_id" binding:"required"`
+	Amount    float64 `json:"amount" binding:"required,gt=0"`
+}
+
+type InterestResponse struct {
+	LoanID              uint      `json:"loan_id"`
+	YearlyInterestRate  float64   `json:"yearly_interest_rate"`
+	PendingAmount       float64   `json:"pending_amount"`
+	InterestForThisYear float64   `json:"interest_for_this_year"`
+	CalculatedAt        time.Time `json:"calculated_at"`
 }
 
 func TakeLoan(c *gin.Context) {
@@ -34,7 +45,8 @@ func TakeLoan(c *gin.Context) {
 	}
 
 	interestRate := 12.0
-	totalPayableAmount := req.PrincipalAmount + (req.PrincipalAmount * interestRate / 100)
+	totalPayableAmount := req.PrincipalAmount +
+		(req.PrincipalAmount * interestRate / 100.0)
 
 	loan := models.Loan{
 		CustomerID:         req.CustomerID,
@@ -54,13 +66,15 @@ func TakeLoan(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, loan)
 }
+
 func GetLoan(c *gin.Context) {
 	id := c.Param("id")
-
 	var loan models.Loan
 
 	if err := config.GetDB().
 		Preload("Customer").
+		Preload("Customer.Branch").
+		Preload("Customer.Branch.Bank").
 		Preload("LoanPayments").
 		First(&loan, id).Error; err != nil {
 
@@ -70,66 +84,160 @@ func GetLoan(c *gin.Context) {
 
 	c.JSON(http.StatusOK, loan)
 }
-func UpdateLoan(c *gin.Context) {
-	id := c.Param("id")
 
-	var req UpdateLoanRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+func GetCustomerLoans(c *gin.Context) {
+	customerID := c.Param("customer_id")
+	var loans []models.Loan
+
+	if err := config.GetDB().
+		Where("customer_id = ?", customerID).
+		Preload("LoanPayments").
+		Order("start_date DESC").
+		Find(&loans).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, loans)
+}
+
+func RepayLoan(c *gin.Context) {
+
+	var err error
+	loanID := c.Param("id")
+
+	var req RepayLoanRequest
+	if err = c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	db := config.GetDB()
-	tx := db.Begin()
+	tx := config.GetDB().Begin()
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start transaction"})
+		return
+	}
 
 	var loan models.Loan
-	if err := tx.First(&loan, id).Error; err != nil {
+	var account models.SavingsAccount
+	var transaction models.Transaction
+	err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(&loan, loanID).Error
+
+	if err == nil {
+
+		if loan.Status != "CLOSED" {
+
+			if req.Amount <= loan.PendingAmount {
+
+				err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+					First(&account, req.AccountID).Error
+
+				if err == nil {
+
+					if account.Balance >= req.Amount {
+
+						account.Balance -= req.Amount
+						err = tx.Save(&account).Error
+
+						if err == nil {
+
+							loan.PendingAmount -= req.Amount
+							if loan.PendingAmount == 0 {
+								loan.Status = "CLOSED"
+								now := time.Now()
+								loan.EndDate = &now
+							}
+
+							err = tx.Save(&loan).Error
+
+							if err == nil {
+
+								payment := models.LoanPayment{
+									LoanID:      loan.ID,
+									Amount:      req.Amount,
+									PaymentDate: time.Now(),
+								}
+
+								err = tx.Create(&payment).Error
+
+								if err == nil {
+
+									transaction = models.Transaction{
+										AccountID: account.ID,
+										Type:      "WITHDRAW",
+										Amount:    req.Amount,
+										Balance:   account.Balance,
+									}
+
+									err = tx.Create(&transaction).Error
+								}
+							}
+						}
+					} else {
+						err = fmt.Errorf("insufficient balance")
+					}
+				}
+			} else {
+				err = fmt.Errorf("amount exceeds pending amount")
+			}
+		} else {
+			err = fmt.Errorf("loan already closed")
+		}
+	}
+	if err != nil {
 		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	} else {
+		if commitErr := tx.Commit().Error; commitErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "commit failed"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"withdraw_amount": req.Amount,
+		"updated_balance": account.Balance,
+		"transaction":     transaction,
+	})
+}
+func GetLoanInterest(c *gin.Context) {
+	loanID := c.Param("id")
+	var loan models.Loan
+
+	if err := config.GetDB().First(&loan, loanID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Loan not found"})
 		return
 	}
 
-	if loan.Status == "CLOSED" {
-		tx.Rollback()
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Loan already closed"})
-		return
+	interestForThisYear :=
+		(loan.PendingAmount * loan.InterestRate) / 100.0
+
+	response := InterestResponse{
+		LoanID:              loan.ID,
+		YearlyInterestRate:  loan.InterestRate,
+		PendingAmount:       loan.PendingAmount,
+		InterestForThisYear: interestForThisYear,
+		CalculatedAt:        time.Now(),
 	}
 
-	if req.Amount > loan.PendingAmount {
-		tx.Rollback()
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Amount exceeds pending balance"})
-		return
-	}
+	c.JSON(http.StatusOK, response)
+}
 
-	loan.PendingAmount -= req.Amount
+func GetLoanPayments(c *gin.Context) {
+	loanID := c.Param("id")
+	var payments []models.LoanPayment
 
-	if loan.PendingAmount == 0 {
-		loan.Status = "CLOSED"
-	}
+	if err := config.GetDB().
+		Where("loan_id = ?", loanID).
+		Order("payment_date DESC").
+		Find(&payments).Error; err != nil {
 
-	if err := tx.Save(&loan).Error; err != nil {
-		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	payment := models.LoanPayment{
-		LoanID:      loan.ID,
-		Amount:      req.Amount,
-		PaymentDate: time.Now(),
-	}
-
-	if err := tx.Create(&payment).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	tx.Commit()
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":        "Loan updated successfully",
-		"pending_amount": loan.PendingAmount,
-		"status":         loan.Status,
-	})
+	c.JSON(http.StatusOK, payments)
 }

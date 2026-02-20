@@ -27,8 +27,9 @@ type Customer struct {
 	Email            string            `gorm:"uniqueIndex" json:"email"`
 	Phone            string            `json:"phone"`
 	CustomerAccounts []CustomerAccount `gorm:"foreignKey:CustomerID;constraint:OnDelete:CASCADE" json:"customer_accounts,omitempty"`
-	Loans            []Loan            `gorm:"foreignKey:CustomerID;constraint:OnDelete:CASCADE" json:"loans,omitempty"`
-	CreatedAt        time.Time         `json:"created_at"`
+	Loans            []Loan            `gorm:"foreignKey:CustomerID;constraint:OnDelete:CASCADE" json:"-"`
+
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type SavingsAccount struct {
@@ -50,12 +51,12 @@ type CustomerAccount struct {
 }
 
 type Transaction struct {
-	ID        uint           `gorm:"primaryKey" json:"id"`
-	AccountID uint           `gorm:"not null;index" json:"account_id"`
-	Account   SavingsAccount `gorm:"foreignKey:AccountID;constraint:OnDelete:CASCADE" json:"account,omitempty"`
-	Type      string         `gorm:"not null" json:"type"`
-	Amount    float64        `gorm:"not null" json:"amount"`
-	CreatedAt time.Time      `json:"created_at"`
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	AccountID uint      `json:"account_id"`
+	Type      string    `json:"type"`
+	Amount    float64   `json:"amount"`
+	Balance   float64   `json:"balance" gorm:"type:decimal(15,2);not null;default:0"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Loan struct {
@@ -77,7 +78,7 @@ type Loan struct {
 type LoanPayment struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	LoanID      uint      `gorm:"not null;index" json:"loan_id"`
-	Loan        Loan      `gorm:"foreignKey:LoanID;constraint:OnDelete:CASCADE" json:"loan,omitempty"`
+	Loan        *Loan     `gorm:"foreignKey:LoanID;constraint:OnDelete:CASCADE" json:"-"`
 	Amount      float64   `gorm:"not null" json:"amount"`
 	PaymentDate time.Time `gorm:"not null" json:"payment_date"`
 	CreatedAt   time.Time `json:"created_at"`

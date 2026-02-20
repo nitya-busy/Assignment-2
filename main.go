@@ -41,17 +41,6 @@ func main() {
 		log.Fatal("Failed to initialize database: ", err)
 	}
 	db := config.GetDB()
-	db.Migrator().DropTable(
-		&models.LoanPayment{},
-		&models.Loan{},
-		&models.Transaction{},
-		&models.CustomerAccount{},
-		&models.SavingsAccount{},
-		&models.Customer{},
-		&models.Branch{},
-		&models.Bank{},
-	)
-
 	if err := db.AutoMigrate(
 		&models.Bank{},
 		&models.Branch{},
